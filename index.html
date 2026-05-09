@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koala Preschool — ID Card Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">KOALA <span>PRESCHOOL</span></div>
+    <div class="logo-sub">ID CARD GENERATOR</div>
+  </div>
+</header>
+
+<div class="container">
+  <h1>Batch ID Card Generator</h1>
+  <p class="subtitle">Upload your Excel sheet + photos → get all cards as PNGs in one ZIP.</p>
+
+  <div class="steps">
+
+    <!-- STEP 1: Excel -->
+    <div class="step active" id="step1">
+      <div class="step-header">
+        <div class="step-num">1</div>
+        <div>
+          <div class="step-title">Upload your Excel sheet</div>
+          <div class="step-desc">One row per student. Any column order is fine — you'll map them below.</div>
+        </div>
+      </div>
+      <div class="upload-zone" id="xlZone">
+        <input type="file" id="xlFile" accept=".xlsx,.xls,.csv" onchange="handleExcel(this)">
+        <div class="icon">📊</div>
+        <div class="uz-title">Click to upload Excel / CSV</div>
+        <div class="uz-sub">Supports <span>.xlsx</span>, <span>.xls</span>, <span>.csv</span></div>
+      </div>
+      <div id="xlStatus"></div>
+      <div id="colMapWrap" style="display:none; margin-top:20px;">
+        <div class="map-heading">MAP YOUR COLUMNS — match each field to your Excel column header:</div>
+        <div class="col-map" id="colMap"></div>
+      </div>
+    </div>
+
+    <!-- STEP 2: Photos -->
+    <div class="step" id="step2">
+      <div class="step-header">
+        <div class="step-num">2</div>
+        <div>
+          <div class="step-title">Upload all student photos</div>
+          <div class="step-desc">Select all photos at once. Names must match the "Photo" column in your Excel.</div>
+        </div>
+      </div>
+      <div class="upload-zone" id="photoZone">
+        <input type="file" id="photoFiles" accept="image/*" multiple onchange="handlePhotos(this)">
+        <div class="icon">🖼️</div>
+        <div class="uz-title">Click to upload all photos at once</div>
+        <div class="uz-sub">Hold <span>⌘ Cmd</span> or <span>Shift</span> to select multiple</div>
+      </div>
+      <div id="photoStatus"></div>
+    </div>
+
+    <!-- STEP 3: Generate -->
+    <div class="step" id="step3">
+      <div class="step-header">
+        <div class="step-num">3</div>
+        <div>
+          <div class="step-title">Generate all cards</div>
+          <div class="step-desc">Preview any student's card, then download everything as a ZIP.</div>
+        </div>
+      </div>
+
+      <div id="studentListWrap" style="display:none;">
+        <div class="student-list" id="studentList"></div>
+      </div>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg">
+          <div class="progress-bar" id="progressBar" style="width:0%"></div>
+        </div>
+        <div class="progress-label" id="progressLabel">Generating...</div>
+      </div>
+
+      <button class="gen-btn" id="genBtn" onclick="generateAll()" disabled>
+        🎨 Generate All ID Cards
+      </button>
+
+      <!-- Preview -->
+      <div class="preview-section" id="previewSection">
+        <h3>Preview</h3>
+        <div class="preview-nav">
+          <button class="nav-btn" id="prevBtn" onclick="previewNav(-1)">← Prev</button>
+          <span class="nav-label" id="navLabel">Student 1 of 1</span>
+          <button class="nav-btn" id="nextBtn" onclick="previewNav(1)">Next →</button>
+        </div>
+        <div class="preview-cards">
+          <div>
+            <div class="preview-card-wrap">
+              <canvas id="prevFront" width="434" height="669"></canvas>
+            </div>
+            <div class="preview-card-label">FRONT</div>
+          </div>
+          <div>
+            <div class="preview-card-wrap">
+              <canvas id="prevBack" width="434" height="669"></canvas>
+            </div>
+            <div class="preview-card-label">BACK</div>
+          </div>
+        </div>
+        <button class="dl-all-btn" id="dlAllBtn" onclick="downloadZip()">
+          ⬇ Download All Cards as ZIP
+        </button>
+      </div>
+    </div>
+
+    <div class="tip">
+      <strong>💡 Excel column names</strong>
+      Suggested headers: <b>Name, Class, DOB, Session, Blood Group, Father's Name,
+      Mother's Name, Residential Address, Father's Contact, Mother's Contact, Photo</b>
+    </div>
+
+  </div>
+</div>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
