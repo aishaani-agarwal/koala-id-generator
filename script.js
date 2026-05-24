@@ -17,9 +17,95 @@ backImg.src  = "data:image/png;base64," + BACK_B64;
 frontImg.onload = () => { imagesReady++; renderEditor(); };
 backImg.onload  = () => { imagesReady++; renderEditor(); };
 
+// ── Custom templates (user-uploaded) ─────────────────────────────────
+let customFrontImg = null;
+let customBackImg  = null;
+
+function activeFrontImg() { return customFrontImg || frontImg; }
+function activeBackImg()  { return customBackImg  || backImg;  }
+
+function handleFrontTemplate(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      customFrontImg = img;
+      document.getElementById('frontTemplateStatus').innerHTML =
+        '<span style="color:#27ae60">✅ Front template loaded: ' + file.name + '</span>';
+      renderEditor();
+      // re-render any generated cards
+      if (renderedCards.length) generateAll();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleBackTemplate(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      customBackImg = img;
+      document.getElementById('backTemplateStatus').innerHTML =
+        '<span style="color:#27ae60">✅ Back template loaded: ' + file.name + '</span>';
+      renderEditor();
+      if (renderedCards.length) generateAll();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function resetTemplates() {
+  customFrontImg = null;
+  customBackImg  = null;
+  document.getElementById('frontTemplateStatus').innerHTML = '<span style="color:#888">Using default template</span>';
+  document.getElementById('backTemplateStatus').innerHTML  = '<span style="color:#888">Using default template</span>';
+  renderEditor();
+}
+
+// ── Placeholder photo for editor preview ─────────────────────────────
+let placeholderPhotoImg = null;
+let editorPhotoImg = null;
+
+(function createPlaceholder() {
+  const c = document.createElement('canvas');
+  c.width = 200; c.height = 220;
+  const ctx = c.getContext('2d');
+  // Draw a simple face placeholder
+  ctx.fillStyle = '#ddd';
+  ctx.fillRect(0, 0, 200, 220);
+  ctx.fillStyle = '#bbb';
+  ctx.fillRect(0, 0, 200, 220);
+  // face
+  ctx.fillStyle = '#c8a882';
+  ctx.beginPath(); ctx.ellipse(100, 90, 55, 65, 0, 0, Math.PI*2); ctx.fill();
+  // hair
+  ctx.fillStyle = '#5a3a1a';
+  ctx.beginPath(); ctx.ellipse(100, 55, 58, 40, 0, Math.PI, 2*Math.PI); ctx.fill();
+  // eyes
+  ctx.fillStyle = '#333';
+  ctx.beginPath(); ctx.ellipse(80, 82, 7, 8, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(120, 82, 7, 8, 0, 0, Math.PI*2); ctx.fill();
+  // smile
+  ctx.strokeStyle = '#8B5E3C'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(100, 100, 20, 0.2, Math.PI-0.2); ctx.stroke();
+  // shirt
+  ctx.fillStyle = '#e8e8e8';
+  ctx.fillRect(30, 160, 140, 60);
+  const img = new Image();
+  img.onload = () => { placeholderPhotoImg = img; renderEditor(); };
+  img.src = c.toDataURL();
+})();
+
 const W = 434, H = 669;
-const PHOTO_BOX = { x: 125, y: 204, w: 184, h: 188 };
-const PHOTO_TILT = -5; // degrees, negative = tilt left
+const DEFAULT_PHOTO = { x: 125, y: 204, w: 184, h: 188, tilt: -5, scale: 100 };
+let photoSettings = JSON.parse(localStorage.getItem('koala_photo_settings') || JSON.stringify(DEFAULT_PHOTO));
 
 // ── DEFAULT positions ─────────────────────────────────────────────────
 // x = where value text starts (after the baked label)
@@ -35,7 +121,7 @@ const DEFAULT_FRONT = [
 const DEFAULT_BACK = [
   { key: "father_name",    label: "Father's Name",    x: 192, y: 130, size: 13 },
   { key: "mother_name",    label: "Mother's Name",    x: 182, y: 159, size: 13 },
-  { key: "address",        label: "Address",          x: 38,  y: 204, size: 12, wrap: true, wrapWidth: 368 },
+  { key: "address",        label: "Address",          x: 230, y: 188, size: 12, wrap: true, wrapWidth: 195, maxLines: 3, inlineStart: true, wrapX: 38 },
   { key: "father_contact", label: "Father's Contact", x: 210, y: 250, size: 13 },
   { key: "mother_contact", label: "Mother's Contact", x: 202, y: 278, size: 13 },
 ];
@@ -45,8 +131,17 @@ const VALUE_COLOR = "#606060";
 const FONT_FACE   = "'MairyBold', 'Poppins', sans-serif";
 
 // ── Load saved positions or use defaults ──────────────────────────────
+const POSITIONS_VERSION = "v1"; // bump this to reset saved positions
+
 function loadPositions() {
   try {
+    const savedVersion = localStorage.getItem('koala_positions_version');
+    if (savedVersion !== POSITIONS_VERSION) {
+      // Version changed — reset to defaults
+      localStorage.removeItem('koala_front_positions');
+      localStorage.removeItem('koala_back_positions');
+      localStorage.setItem('koala_positions_version', POSITIONS_VERSION);
+    }
     const sf = localStorage.getItem('koala_front_positions');
     const sb = localStorage.getItem('koala_back_positions');
     return {
@@ -54,6 +149,17 @@ function loadPositions() {
       back:  sb ? JSON.parse(sb) : JSON.parse(JSON.stringify(DEFAULT_BACK)),
     };
   } catch { return { front: JSON.parse(JSON.stringify(DEFAULT_FRONT)), back: JSON.parse(JSON.stringify(DEFAULT_BACK)) }; }
+}
+
+function savePhotoSettings() {
+  localStorage.setItem('koala_photo_settings', JSON.stringify(photoSettings));
+}
+
+function resetPhotoSettings() {
+  photoSettings = JSON.parse(JSON.stringify(DEFAULT_PHOTO));
+  savePhotoSettings();
+  buildPhotoSliders();
+  renderEditor();
 }
 
 function savePositions(positions) {
@@ -100,6 +206,53 @@ function switchEditorSide(side) {
 function buildSliders() {
   buildSideSliders('frontSliders', positions.front, 'front');
   buildSideSliders('backSliders',  positions.back,  'back');
+  buildPhotoSliders();
+}
+
+function buildPhotoSliders() {
+  const el = document.getElementById('photoSliders');
+  if (!el) return;
+  const ps = photoSettings;
+  el.innerHTML = `
+    <div class="field-group">
+      <div class="field-group-label">Photo Position &amp; Size</div>
+      <div class="slider-row">
+        <span class="slider-name">X position</span>
+        <input class="slider-input" type="range" min="0" max="400" value="${ps.x}"
+          oninput="photoSettings.x=+this.value; savePhotoSettings(); document.getElementById('pxv').textContent=this.value; renderEditor()">
+        <span class="slider-val" id="pxv">${ps.x}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Y position</span>
+        <input class="slider-input" type="range" min="0" max="650" value="${ps.y}"
+          oninput="photoSettings.y=+this.value; savePhotoSettings(); document.getElementById('pyv').textContent=this.value; renderEditor()">
+        <span class="slider-val" id="pyv">${ps.y}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Width</span>
+        <input class="slider-input" type="range" min="50" max="350" value="${ps.w}"
+          oninput="photoSettings.w=+this.value; savePhotoSettings(); document.getElementById('pwv').textContent=this.value; renderEditor()">
+        <span class="slider-val" id="pwv">${ps.w}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Height</span>
+        <input class="slider-input" type="range" min="50" max="350" value="${ps.h}"
+          oninput="photoSettings.h=+this.value; savePhotoSettings(); document.getElementById('phv').textContent=this.value; renderEditor()">
+        <span class="slider-val" id="phv">${ps.h}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Tilt (degrees)</span>
+        <input class="slider-input" type="range" min="-30" max="30" value="${ps.tilt}"
+          oninput="photoSettings.tilt=+this.value; savePhotoSettings(); document.getElementById('ptv').textContent=this.value; renderEditor()">
+        <span class="slider-val" id="ptv">${ps.tilt}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Scale %</span>
+        <input class="slider-input" type="range" min="50" max="200" value="${ps.scale}"
+          oninput="photoSettings.scale=+this.value; savePhotoSettings(); document.getElementById('psv').textContent=this.value; renderEditor()">
+        <span class="slider-val" id="psv">${ps.scale}</span>
+      </div>
+    </div>`;
 }
 
 function buildSideSliders(containerId, fields, side) {
@@ -111,19 +264,19 @@ function buildSideSliders(containerId, fields, side) {
         <div class="field-group-label">${f.label}</div>
         <div class="slider-row">
           <span class="slider-name">X position</span>
-          <input class="slider-input" type="range" min="0" max="400" value="${f.x}"
+          <input class="slider-input" type="range" min="0" max="800" value="${f.x}"
             oninput="updatePos('${side}',${i},'x',+this.value); document.getElementById('xv_${side}_${i}').textContent=this.value">
           <span class="slider-val" id="xv_${side}_${i}">${f.x}</span>
         </div>
         <div class="slider-row">
           <span class="slider-name">Y position</span>
-          <input class="slider-input" type="range" min="0" max="650" value="${f.y}"
+          <input class="slider-input" type="range" min="0" max="1300" value="${f.y}"
             oninput="updatePos('${side}',${i},'y',+this.value); document.getElementById('yv_${side}_${i}').textContent=this.value">
           <span class="slider-val" id="yv_${side}_${i}">${f.y}</span>
         </div>
         <div class="slider-row">
           <span class="slider-name">Font size</span>
-          <input class="slider-input" type="range" min="8" max="28" value="${f.size}"
+          <input class="slider-input" type="range" min="16" max="56" value="${f.size}"
             oninput="updatePos('${side}',${i},'size',+this.value); document.getElementById('sv_${side}_${i}').textContent=this.value">
           <span class="slider-val" id="sv_${side}_${i}">${f.size}</span>
         </div>
@@ -141,6 +294,8 @@ function resetPositions() {
   if (!confirm('Reset all positions to defaults?')) return;
   positions = { front: JSON.parse(JSON.stringify(DEFAULT_FRONT)), back: JSON.parse(JSON.stringify(DEFAULT_BACK)) };
   savePositions(positions);
+  photoSettings = JSON.parse(JSON.stringify(DEFAULT_PHOTO));
+  savePhotoSettings();
   buildSliders();
   renderEditor();
 }
@@ -158,8 +313,13 @@ function renderEditor() {
   const canvas = document.getElementById('editorCanvas');
   if (!canvas || imagesReady < 2) return;
   const ctx = canvas.getContext('2d');
-  if (editorSide === 'front') drawFront(ctx, SAMPLE, null, positions.front);
-  else                         drawBack(ctx,  SAMPLE,       positions.back);
+  if (editorSide === 'front') {
+    // Use first available photo for live preview, otherwise placeholder
+    const previewPhoto = editorPhotoImg || placeholderPhotoImg;
+    drawFront(ctx, SAMPLE, previewPhoto, positions.front);
+  } else {
+    drawBack(ctx, SAMPLE, positions.back);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -309,6 +469,12 @@ function handlePhotos(input) {
   Promise.all(promises).then(() => {
     // Sort photoOrderList alphabetically so upload order doesn't matter
     photoOrderList.sort((a, b) => a.name.localeCompare(b.name));
+    // Use first photo for editor preview
+    if (photoOrderList.length > 0) {
+      const img = new Image();
+      img.onload = () => { editorPhotoImg = img; renderEditor(); };
+      img.src = photoOrderList[0].url;
+    }
     showStatus("photoStatus", `✅ ${files.length} photo(s) uploaded & backgrounds removed`, "ok");
     document.getElementById("step2").classList.add("done");
     updateStudentList();
@@ -475,16 +641,21 @@ async function generateAll() {
 
 // ── Draw front ────────────────────────────────────────────────────────
 function drawFront(ctx, student, photoImg, fields) {
-  ctx.drawImage(frontImg, 0, 0, W, H);
+  ctx.drawImage(activeFrontImg(), 0, 0, W, H);
   if (photoImg) {
-    const b = PHOTO_BOX;
+    const b = photoSettings;
     const cx = b.x + b.w/2, cy = b.y + b.h/2;
-    const scale = Math.max(b.w/photoImg.width, b.h/photoImg.height);
+    const baseScale = Math.max(b.w/photoImg.width, b.h/photoImg.height);
+    const scale = baseScale * (photoSettings.scale / 100);
     const sw = photoImg.width*scale, sh = photoImg.height*scale;
+    const tiltRad = (photoSettings.tilt * Math.PI) / 180;
     ctx.save();
-    ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
+    // Move to center, rotate, THEN clip — so clip rotates with the photo
     ctx.translate(cx, cy);
-    ctx.rotate((PHOTO_TILT * Math.PI) / 180);
+    ctx.rotate(tiltRad);
+    ctx.beginPath();
+    ctx.rect(-b.w/2, -b.h/2, b.w, b.h);
+    ctx.clip();
     ctx.drawImage(photoImg, -sw/2, -sh/2, sw, sh);
     ctx.restore();
   }
@@ -497,13 +668,56 @@ function drawFront(ctx, student, photoImg, fields) {
 
 // ── Draw back ─────────────────────────────────────────────────────────
 function drawBack(ctx, student, fields) {
-  ctx.drawImage(backImg, 0, 0, W, H);
-  ctx.textBaseline = "top"; ctx.fillStyle = VALUE_COLOR;
+  ctx.drawImage(activeBackImg(), 0, 0, W, H);
+  ctx.textBaseline = "top"; ctx.textAlign = "left"; ctx.fillStyle = VALUE_COLOR;
   for (const f of fields) {
     ctx.font = `bold ${f.size}px ${FONT_FACE}`;
-    if (f.wrap) wrapText(ctx, student[f.key] || "", f.x, f.y, f.wrapWidth || 370, f.size + 4);
-    else ctx.fillText(student[f.key] || "", f.x, f.y);
+    if (f.wrap && f.inlineStart) {
+      // First line starts at f.x (after label), continuation lines go to f.wrapX (left margin)
+      wrapTextInline(ctx, student[f.key] || "", f.x, f.y, f.wrapWidth || 370, f.size + 4, f.maxLines, f.wrapX || 38);
+    } else if (f.wrap) {
+      wrapText(ctx, student[f.key] || "", f.x, f.y, f.wrapWidth || 370, f.size + 4, f.maxLines);
+    } else {
+      ctx.fillText(student[f.key] || "", f.x, f.y);
+    }
   }
+}
+
+// Inline wrap: first line starts at x (after label), continuations at wrapX
+function wrapTextInline(ctx, text, x, y, maxWidth, lineHeight, maxLines, wrapX) {
+  if (!text) return;
+  ctx.textAlign = "left";
+  const words = String(text).split(" ");
+  const limit = maxLines || 3;
+  const contWidth = W - wrapX - 8;
+
+  // Pack words into first line (starting after label at x)
+  let i = 0, firstLine = "";
+  while (i < words.length) {
+    const test = firstLine ? firstLine + " " + words[i] : words[i];
+    if (firstLine && ctx.measureText(test).width > maxWidth) break;
+    firstLine = test;
+    i++;
+  }
+  ctx.fillText(firstLine, x, y);
+  if (i >= words.length) return;
+
+  // Remaining words on continuation lines starting at wrapX
+  let line = "", lineY = y + lineHeight, lineCount = 1;
+  while (i < words.length) {
+    const test = line ? line + " " + words[i] : words[i];
+    if (line && ctx.measureText(test).width > contWidth) {
+      ctx.fillText(line, wrapX, lineY);
+      lineY += lineHeight;
+      lineCount++;
+      line = words[i];
+      if (lineCount >= limit) { ctx.fillText(line, wrapX, lineY); return; }
+    } else {
+      line = test;
+    }
+    i++;
+  }
+  if (line) ctx.fillText(line, wrapX, lineY);
 }
 
 // ── Preview ───────────────────────────────────────────────────────────
@@ -547,13 +761,22 @@ function makeCanvas() { const c = document.createElement("canvas"); c.width=W; c
 function loadImage(dataURL) { return new Promise(res => { if (!dataURL) return res(null); const img = new Image(); img.onload=()=>res(img); img.onerror=()=>res(null); img.src=dataURL; }); }
 function waitForImages() { return new Promise(res => { if (imagesReady>=2) return res(); const t=setInterval(()=>{ if(imagesReady>=2){clearInterval(t);res();}},100); }); }
 function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+function wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
   if (!text) return;
-  const words = String(text).split(" "); let line="", lineY=y;
+  const words = String(text).split(" ");
+  let line="", lineY=y, lineCount=0;
+  const limit = maxLines || 99;
   for (const word of words) {
     const test = line ? line+" "+word : word;
-    if (ctx.measureText(test).width > maxWidth && line) { ctx.fillText(line, x, lineY); line=word; lineY+=lineHeight; }
-    else line=test;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, lineY);
+      line=word; lineY+=lineHeight; lineCount++;
+      if (lineCount >= limit - 1) {
+        // Last line — fit remaining
+        ctx.fillText(words.slice(words.lastIndexOf(word)).join(" "), x, lineY);
+        return;
+      }
+    } else { line=test; }
   }
   if (line) ctx.fillText(line, x, lineY);
 }
