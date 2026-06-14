@@ -112,8 +112,11 @@ let photoSettings = JSON.parse(localStorage.getItem('koala_photo_settings') || J
 // y = vertical position
 // size = font size in px
 const DEFAULT_FRONT = [
-  { key: "name",    label: "Name",         x: 170, y: 428, size: 15 },
-  { key: "class",   label: "Class",        x: 158, y: 458, size: 15 },
+  // Name & Class are CENTERED: the code draws "Label:" + value as one unit and
+  // centres it on centerX. (Your template PNG must have NO baked Name:/Class: text.)
+  // labelText = what's drawn in pink · centerX = horizontal middle · gap = space after colon
+  { key: "name",    label: "Name",         x: 170, y: 428, size: 15, centered: true, labelText: "Name:",  centerX: 217, gap: 8, labelSize: 19 },
+  { key: "class",   label: "Class",        x: 158, y: 458, size: 15, centered: true, labelText: "Class:", centerX: 217, gap: 8, labelSize: 19 },
   { key: "dob",     label: "D.O.B",        x: 207, y: 488, size: 15 },
   { key: "session", label: "Session",      x: 220, y: 518, size: 15 },
   { key: "blood",   label: "Blood Group",  x: 278, y: 548, size: 15 },
@@ -126,18 +129,18 @@ const DEFAULT_BACK = [
   { key: "mother_contact", label: "Mother's Contact", x: 202, y: 278, size: 13 },
 ];
 
-// Value text color — grey
+// Value text color — grey · Label text color — pink (matches CSS --pink)
 const VALUE_COLOR = "#606060";
+const LABEL_COLOR = "#BA8F93";
 const FONT_FACE   = "'MairyBold', 'Poppins', sans-serif";
 
 // ── Load saved positions or use defaults ──────────────────────────────
-const POSITIONS_VERSION = "v1"; // bump this to reset saved positions
+const POSITIONS_VERSION = "v4"; // bumped: forces wrap settings to reload
 
 function loadPositions() {
   try {
     const savedVersion = localStorage.getItem('koala_positions_version');
     if (savedVersion !== POSITIONS_VERSION) {
-      // Version changed — reset to defaults
       localStorage.removeItem('koala_front_positions');
       localStorage.removeItem('koala_back_positions');
       localStorage.setItem('koala_positions_version', POSITIONS_VERSION);
@@ -145,10 +148,35 @@ function loadPositions() {
     const sf = localStorage.getItem('koala_front_positions');
     const sb = localStorage.getItem('koala_back_positions');
     return {
-      front: sf ? JSON.parse(sf) : JSON.parse(JSON.stringify(DEFAULT_FRONT)),
-      back:  sb ? JSON.parse(sb) : JSON.parse(JSON.stringify(DEFAULT_BACK)),
+      front: mergeWithDefaults(sf ? JSON.parse(sf) : null, DEFAULT_FRONT),
+      back:  mergeWithDefaults(sb ? JSON.parse(sb) : null, DEFAULT_BACK),
     };
-  } catch { return { front: JSON.parse(JSON.stringify(DEFAULT_FRONT)), back: JSON.parse(JSON.stringify(DEFAULT_BACK)) }; }
+  } catch {
+    return {
+      front: JSON.parse(JSON.stringify(DEFAULT_FRONT)),
+      back:  JSON.parse(JSON.stringify(DEFAULT_BACK)),
+    };
+  }
+}
+
+// Saved data only overrides x / y / size. Behaviour flags (wrap, inlineStart,
+// wrapX, maxLines) ALWAYS come from defaults, so old saved data can never
+// strip them out again.
+function mergeWithDefaults(saved, defaults) {
+  const base = JSON.parse(JSON.stringify(defaults));
+  if (!saved) return base;
+  return base.map(def => {
+    const s = saved.find(f => f.key === def.key);
+    if (s) {
+      if (typeof s.x === 'number') def.x = s.x;
+      if (typeof s.y === 'number') def.y = s.y;
+      if (typeof s.size === 'number') def.size = s.size;
+      if (typeof s.centerX === 'number') def.centerX = s.centerX;
+      if (typeof s.gap === 'number') def.gap = s.gap;
+      if (typeof s.labelSize === 'number') def.labelSize = s.labelSize;
+    }
+    return def;
+  });
 }
 
 function savePhotoSettings() {
@@ -259,15 +287,36 @@ function buildSideSliders(containerId, fields, side) {
   const el = document.getElementById(containerId);
   el.innerHTML = '';
   fields.forEach((f, i) => {
-    el.innerHTML += `
-      <div class="field-group">
-        <div class="field-group-label">${f.label}</div>
+    // Centred fields (Name/Class): show Center-X + Gap instead of plain X.
+    const posRow = f.centered ? `
+        <div class="slider-row">
+          <span class="slider-name">Center X</span>
+          <input class="slider-input" type="range" min="0" max="434" value="${f.centerX != null ? f.centerX : 217}"
+            oninput="updatePos('${side}',${i},'centerX',+this.value); document.getElementById('cxv_${side}_${i}').textContent=this.value">
+          <span class="slider-val" id="cxv_${side}_${i}">${f.centerX != null ? f.centerX : 217}</span>
+        </div>
+        <div class="slider-row">
+          <span class="slider-name">Label gap</span>
+          <input class="slider-input" type="range" min="0" max="40" value="${f.gap != null ? f.gap : 8}"
+            oninput="updatePos('${side}',${i},'gap',+this.value); document.getElementById('gpv_${side}_${i}').textContent=this.value">
+          <span class="slider-val" id="gpv_${side}_${i}">${f.gap != null ? f.gap : 8}</span>
+        </div>
+        <div class="slider-row">
+          <span class="slider-name">Label size</span>
+          <input class="slider-input" type="range" min="10" max="56" value="${f.labelSize != null ? f.labelSize : f.size}"
+            oninput="updatePos('${side}',${i},'labelSize',+this.value); document.getElementById('lsv_${side}_${i}').textContent=this.value">
+          <span class="slider-val" id="lsv_${side}_${i}">${f.labelSize != null ? f.labelSize : f.size}</span>
+        </div>` : `
         <div class="slider-row">
           <span class="slider-name">X position</span>
           <input class="slider-input" type="range" min="0" max="800" value="${f.x}"
             oninput="updatePos('${side}',${i},'x',+this.value); document.getElementById('xv_${side}_${i}').textContent=this.value">
           <span class="slider-val" id="xv_${side}_${i}">${f.x}</span>
-        </div>
+        </div>`;
+    el.innerHTML += `
+      <div class="field-group">
+        <div class="field-group-label">${f.label}</div>
+        ${posRow}
         <div class="slider-row">
           <span class="slider-name">Y position</span>
           <input class="slider-input" type="range" min="0" max="1300" value="${f.y}"
@@ -659,10 +708,40 @@ function drawFront(ctx, student, photoImg, fields) {
     ctx.drawImage(photoImg, -sw/2, -sh/2, sw, sh);
     ctx.restore();
   }
-  ctx.textBaseline = "top"; ctx.fillStyle = VALUE_COLOR;
+  ctx.textBaseline = "top";
   for (const f of fields) {
     ctx.font = `bold ${f.size}px ${FONT_FACE}`;
-    ctx.fillText(student[f.key] || "", f.x, f.y);
+    const value = student[f.key] || "";
+    if (f.centered) {
+      // Draw "Label:" (pink) + value (grey) as ONE unit, centred on f.centerX.
+      // Width adapts to the name, so the whole block re-centres for every student.
+      // The pink label can be a different (bigger) size than the grey value.
+      const labelText = f.labelText || (f.label + ":");
+      const gap = f.gap != null ? f.gap : 8;
+      const labelSize = f.labelSize != null ? f.labelSize : f.size;
+      // Measure label at its own size
+      ctx.font = `bold ${labelSize}px ${FONT_FACE}`;
+      const labelW = ctx.measureText(labelText).width;
+      // Measure value at its size
+      ctx.font = `bold ${f.size}px ${FONT_FACE}`;
+      const valueW = ctx.measureText(value).width;
+      const totalW = labelW + gap + valueW;
+      const centerX = f.centerX != null ? f.centerX : W / 2;
+      const startX = centerX - totalW / 2;
+      // Bottom-align both so the bigger label and smaller value share a baseline.
+      const baseY = f.y + Math.max(labelSize, f.size);
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = LABEL_COLOR;
+      ctx.font = `bold ${labelSize}px ${FONT_FACE}`;
+      ctx.fillText(labelText, startX, baseY);
+      ctx.fillStyle = VALUE_COLOR;
+      ctx.font = `bold ${f.size}px ${FONT_FACE}`;
+      ctx.fillText(value, startX + labelW + gap, baseY);
+      ctx.textBaseline = "top";
+    } else {
+      ctx.fillStyle = VALUE_COLOR;
+      ctx.fillText(value, f.x, f.y);
+    }
   }
 }
 
@@ -673,8 +752,7 @@ function drawBack(ctx, student, fields) {
   for (const f of fields) {
     ctx.font = `bold ${f.size}px ${FONT_FACE}`;
     if (f.wrap && f.inlineStart) {
-      // First line starts at f.x (after label), continuation lines go to f.wrapX (left margin)
-      wrapTextInline(ctx, student[f.key] || "", f.x, f.y, f.wrapWidth || 370, f.size + 4, f.maxLines, f.wrapX || 38);
+      wrapTextInline(ctx, student[f.key] || "", f.x, f.y, f.size, f.maxLines || 3, f.wrapX || 38);
     } else if (f.wrap) {
       wrapText(ctx, student[f.key] || "", f.x, f.y, f.wrapWidth || 370, f.size + 4, f.maxLines);
     } else {
@@ -683,41 +761,47 @@ function drawBack(ctx, student, fields) {
   }
 }
 
-// Inline wrap: first line starts at x (after label), continuations at wrapX
-function wrapTextInline(ctx, text, x, y, maxWidth, lineHeight, maxLines, wrapX) {
+// Inline wrap: line 1 starts at x (right after the printed label) and uses the
+// space left on that line. Lines 2+ start at wrapX (under the label, full
+// width). If the text needs more than maxLines lines, the font auto-shrinks.
+function wrapTextInline(ctx, text, x, y, baseSize, maxLines, wrapX) {
   if (!text) return;
   ctx.textAlign = "left";
-  const words = String(text).split(" ");
+  const words = String(text).split(/\s+/).filter(Boolean);
   const limit = maxLines || 3;
-  const contWidth = W - wrapX - 8;
+  const line1Width = W - x - 14;      // space remaining next to the label
+  const contWidth  = W - wrapX - 14;  // full width for lines 2 and 3
 
-  // Pack words into first line (starting after label at x)
-  let i = 0, firstLine = "";
-  while (i < words.length) {
-    const test = firstLine ? firstLine + " " + words[i] : words[i];
-    if (firstLine && ctx.measureText(test).width > maxWidth) break;
-    firstLine = test;
-    i++;
+  let size = baseSize, lines = [];
+  while (size >= 8) {
+    ctx.font = `bold ${size}px ${FONT_FACE}`;
+    lines = layoutInline(ctx, words, line1Width, contWidth);
+    if (lines.length <= limit) break;
+    size -= 0.5;                      // too long → shrink font and retry
   }
-  ctx.fillText(firstLine, x, y);
-  if (i >= words.length) return;
 
-  // Remaining words on continuation lines starting at wrapX
-  let line = "", lineY = y + lineHeight, lineCount = 1;
-  while (i < words.length) {
-    const test = line ? line + " " + words[i] : words[i];
-    if (line && ctx.measureText(test).width > contWidth) {
-      ctx.fillText(line, wrapX, lineY);
-      lineY += lineHeight;
-      lineCount++;
-      line = words[i];
-      if (lineCount >= limit) { ctx.fillText(line, wrapX, lineY); return; }
+  const lineHeight = size + 4;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, i === 0 ? x : wrapX, y + i * lineHeight);
+  });
+}
+
+// Greedy word wrap: first line capped at line1Width, the rest at contWidth.
+function layoutInline(ctx, words, line1Width, contWidth) {
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const test = line ? line + " " + word : word;
+    const max  = lines.length === 0 ? line1Width : contWidth;
+    if (line && ctx.measureText(test).width > max) {
+      lines.push(line);
+      line = word;
     } else {
       line = test;
     }
-    i++;
   }
-  if (line) ctx.fillText(line, wrapX, lineY);
+  if (line) lines.push(line);
+  return lines;
 }
 
 // ── Preview ───────────────────────────────────────────────────────────
