@@ -115,18 +115,20 @@ const DEFAULT_FRONT = [
   // Name & Class are CENTERED: the code draws "Label:" + value as one unit and
   // centres it on centerX. (Your template PNG must have NO baked Name:/Class: text.)
   // labelText = what's drawn in pink · centerX = horizontal middle · gap = space after colon
-  { key: "name",    label: "Name",         x: 170, y: 428, size: 15, centered: true, labelText: "Name:",  centerX: 217, gap: 8, labelSize: 19 },
-  { key: "class",   label: "Class",        x: 158, y: 458, size: 15, centered: true, labelText: "Class:", centerX: 217, gap: 8, labelSize: 19 },
-  { key: "dob",     label: "D.O.B",        x: 207, y: 488, size: 15 },
-  { key: "session", label: "Session",      x: 220, y: 518, size: 15 },
-  { key: "blood",   label: "Blood Group",  x: 278, y: 548, size: 15 },
+  // STANDARD: value font = 17, label font = 19
+  { key: "name",    label: "Name",         x: 170, y: 428, size: 17, centered: true, labelText: "Name:",  centerX: 217, gap: 8, labelSize: 19 },
+  { key: "class",   label: "Class",        x: 158, y: 458, size: 17, centered: true, labelText: "Class:", centerX: 217, gap: 8, labelSize: 19 },
+  { key: "dob",     label: "D.O.B",        x: 207, y: 488, size: 17, centered: true, labelText: "D.O.B:",       centerX: 217, gap: 8, labelSize: 19 },
+  { key: "session", label: "Session",      x: 220, y: 518, size: 17, centered: true, labelText: "Session:",     centerX: 217, gap: 8, labelSize: 19 },
+  { key: "blood",   label: "Blood Group",  x: 278, y: 548, size: 17, centered: true, labelText: "Blood Group:", centerX: 217, gap: 8, labelSize: 19 },
 ];
 const DEFAULT_BACK = [
-  { key: "father_name",    label: "Father's Name",    x: 192, y: 130, size: 13 },
-  { key: "mother_name",    label: "Mother's Name",    x: 182, y: 159, size: 13 },
-  { key: "address",        label: "Address",          x: 230, y: 188, size: 12, wrap: true, wrapWidth: 195, maxLines: 3, inlineStart: true, wrapX: 38 },
-  { key: "father_contact", label: "Father's Contact", x: 210, y: 250, size: 13 },
-  { key: "mother_contact", label: "Mother's Contact", x: 202, y: 278, size: 13 },
+  // STANDARD positions/sizes (from tuned sliders)
+  { key: "father_name",    label: "Father's Name",    x: 171, y: 125, size: 16 },
+  { key: "mother_name",    label: "Mother's Name",    x: 171, y: 155, size: 16 },
+  { key: "address",        label: "Address",          x: 206, y: 185, size: 16, wrap: true, wrapWidth: 195, maxLines: 3, inlineStart: true, wrapX: 38 },
+  { key: "father_contact", label: "Father's Contact", x: 190, y: 244, size: 16 },
+  { key: "mother_contact", label: "Mother's Contact", x: 190, y: 273, size: 16 },
 ];
 
 // Value text color — grey · Label text color — pink (matches CSS --pink)
@@ -135,7 +137,7 @@ const LABEL_COLOR = "#BA8F93";
 const FONT_FACE   = "'MairyBold', 'Poppins', sans-serif";
 
 // ── Load saved positions or use defaults ──────────────────────────────
-const POSITIONS_VERSION = "v4"; // bumped: forces wrap settings to reload
+const POSITIONS_VERSION = "v6"; // bumped: forces wrap settings to reload
 
 function loadPositions() {
   try {
