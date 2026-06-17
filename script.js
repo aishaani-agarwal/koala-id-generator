@@ -115,12 +115,12 @@ const DEFAULT_FRONT = [
   // Name & Class are CENTERED: the code draws "Label:" + value as one unit and
   // centres it on centerX. (Your template PNG must have NO baked Name:/Class: text.)
   // labelText = what's drawn in pink · centerX = horizontal middle · gap = space after colon
-  // STANDARD: value font = 17, label font = 19
-  { key: "name",    label: "Name",         x: 170, y: 428, size: 17, centered: true, labelText: "Name:",  centerX: 217, gap: 8, labelSize: 19 },
-  { key: "class",   label: "Class",        x: 158, y: 458, size: 17, centered: true, labelText: "Class:", centerX: 217, gap: 8, labelSize: 19 },
-  { key: "dob",     label: "D.O.B",        x: 207, y: 488, size: 17, centered: true, labelText: "D.O.B:",       centerX: 217, gap: 8, labelSize: 19 },
-  { key: "session", label: "Session",      x: 220, y: 518, size: 17, centered: true, labelText: "Session:",     centerX: 217, gap: 8, labelSize: 19 },
-  { key: "blood",   label: "Blood Group",  x: 278, y: 548, size: 17, centered: true, labelText: "Blood Group:", centerX: 217, gap: 8, labelSize: 19 },
+  // STANDARD: value font = 19, label font = 19
+  { key: "name",    label: "Name",         x: 170, y: 428, size: 19, centered: true, labelText: "Name:",  centerX: 217, gap: 8, labelSize: 19 },
+  { key: "class",   label: "Class",        x: 158, y: 458, size: 19, centered: true, labelText: "Class:", centerX: 217, gap: 8, labelSize: 19 },
+  { key: "dob",     label: "D.O.B",        x: 207, y: 488, size: 19, centered: true, labelText: "D.O.B:",       centerX: 217, gap: 8, labelSize: 19 },
+  { key: "session", label: "Session",      x: 220, y: 518, size: 19, centered: true, labelText: "Session:",     centerX: 217, gap: 8, labelSize: 19 },
+  { key: "blood",   label: "Blood Group",  x: 278, y: 548, size: 19, centered: true, labelText: "Blood Group:", centerX: 217, gap: 8, labelSize: 19 },
 ];
 const DEFAULT_BACK = [
   // STANDARD positions/sizes (from tuned sliders)
@@ -137,7 +137,7 @@ const LABEL_COLOR = "#BA8F93";
 const FONT_FACE   = "'MairyBold', 'Poppins', sans-serif";
 
 // ── Load saved positions or use defaults ──────────────────────────────
-const POSITIONS_VERSION = "v6"; // bumped: forces wrap settings to reload
+const POSITIONS_VERSION = "v7"; // bumped: value font size 19
 
 function loadPositions() {
   try {
@@ -379,6 +379,8 @@ function renderEditor() {
 
 const FIELD_KEYS = [
   { key: "name",           label: "Full Name" },
+  { key: "first_name",     label: "First Name (if Full Name is a formula)" },
+  { key: "last_name",      label: "Last Name (if Full Name is a formula)" },
   { key: "class",          label: "Class" },
   { key: "dob",            label: "Date of Birth (D.O.B)" },
   { key: "blood",          label: "Blood Group" },
@@ -392,6 +394,8 @@ const FIELD_KEYS = [
 
 const AUTO_MAP = {
   name:           ["full name", "name", "student name", "child name"],
+  first_name:     ["first name", "firstname", "given name"],
+  last_name:      ["last name", "lastname", "surname", "family name"],
   class:          ["class", "grade", "section", "class name"],
   dob:            ["d. o. b", "d.o.b", "dob", "date of birth", "d.o.b.", "e. o. b"],
   blood:          ["blood group", "blood", "bloodgroup", "blood type"],
@@ -451,21 +455,32 @@ function autoGuess(key) {
 }
 
 function updateMappedData() {
-  const SKIP_STATUSES = ["dispatched", "printed", "prepared", "done", "complete", "completed"];
-  mappedData = students.map(row => {
-    const obj = { session: "2026-2027" };
+  const SKIP_STATUSES = ["dispatched", "despatched", "printed", "prepared", "done", "complete", "completed"];
+  mappedData = students.map((row, idx) => {
+    const obj = { session: "2026-2027", _excelRow: idx + 2 }; // row 1 = header, so student 0 = row 2
     for (const field of FIELD_KEYS) {
       const sel = document.getElementById(`map_${field.key}`);
       const idx = sel ? parseInt(sel.value) : NaN;
       let val = (!isNaN(idx) && idx >= 0) ? String(row[idx] || "").trim() : "";
       if (field.key === "dob") val = formatDOB(val);
       if (field.key === "blood" && (val.includes("#") || val === "")) val = "";
+      // If name is still a formula (CONCATENATE not evaluated), build from first+last
+      if (field.key === "name" && (val.startsWith("=") || val === "")) {
+        const firstSel = document.getElementById("map_first_name");
+        const lastSel  = document.getElementById("map_last_name");
+        const firstIdx = firstSel ? parseInt(firstSel.value) : NaN;
+        const lastIdx  = lastSel  ? parseInt(lastSel.value)  : NaN;
+        const first = (!isNaN(firstIdx) && firstIdx >= 0) ? String(row[firstIdx] || "").trim() : "";
+        const last  = (!isNaN(lastIdx)  && lastIdx  >= 0) ? String(row[lastIdx]  || "").trim() : "";
+        val = (first + " " + last).trim();
+      }
       obj[field.key] = val;
     }
     return obj;
   }).filter(s => {
     if (!s.name || s.name.trim() === "") return false;
-    if (s.status && s.status.trim() !== "") return false;
+    const statusLower = (s.status || "").trim().toLowerCase();
+    if (statusLower !== "" && SKIP_STATUSES.includes(statusLower)) return false;
     return true;
   });
   updateStudentList();
@@ -494,22 +509,21 @@ function formatDateStr(d) {
 
 function handlePhotos(input) {
   const files = Array.from(input.files);
-  photoMap = {};
-  photoOrderList = []; // ordered list of dataURLs matching row order
+  photoMap = {};      // rowNumber (int) → dataURL
+  photoOrderList = []; // kept for editor preview only
 
-  const promises = files.map((f, fileIndex) => new Promise(res => {
+  const promises = files.map(f => new Promise(res => {
     const reader = new FileReader();
     reader.onload = e => {
       const dataURL = e.target.result;
-      // Remove background in browser then store
       removeBgInBrowser(dataURL).then(cleanURL => {
-        const lower = f.name.toLowerCase();
-        const noExt = lower.replace(/\.[^.]+$/, "");
-        // Name-based map (normalized)
-        photoMap[lower]  = cleanURL;
-        photoMap[noExt]  = cleanURL;
-        photoMap[normalize(noExt)] = cleanURL;
-        // Order-based: sort files by name so order is deterministic
+        // Extract leading number from filename: "02_shaurya.jpg" → 2
+        const noExt = f.name.replace(/\.[^.]+$/, "");
+        const rowMatch = noExt.match(/^(\d+)/);
+        if (rowMatch) {
+          const rowNum = parseInt(rowMatch[1], 10);
+          photoMap[rowNum] = cleanURL; // key = Excel row number
+        }
         photoOrderList.push({ name: noExt, url: cleanURL, origName: f.name });
         res();
       });
@@ -518,9 +532,7 @@ function handlePhotos(input) {
   }));
 
   Promise.all(promises).then(() => {
-    // Sort photoOrderList alphabetically so upload order doesn't matter
-    photoOrderList.sort((a, b) => a.name.localeCompare(b.name));
-    // Use first photo for editor preview
+    // Use first uploaded photo for editor preview
     if (photoOrderList.length > 0) {
       const img = new Image();
       img.onload = () => { editorPhotoImg = img; renderEditor(); };
@@ -590,10 +602,13 @@ function cropOnly(dataURL, pct) {
 
 
 
-// ── Order-based photo lookup ─────────────────────────────────────────
-function getPhotoByIndex(index) {
-  if (photoOrderList && photoOrderList[index]) return photoOrderList[index].url;
-  return null;
+// ── Row-number based photo lookup ────────────────────────────────────
+// photoMap keys are Excel row numbers (integers).
+// "02_shaurya.jpg" → row 2 → student at index 0 (row 2 - 2, since row 1 = header).
+// Missing photos leave that card blank without shifting anyone else.
+function findPhoto(student) {
+  if (!student._excelRow) return null;
+  return photoMap[student._excelRow] || null;
 }
 
 function normalize(str) {
@@ -604,47 +619,15 @@ function normalize(str) {
     .trim();
 }
 
-function findPhoto(student) {
-  const name = normalize(student.name || "");
-  if (!name) return null;
-
-  // Exact normalized match
-  for (const [key, dataURL] of Object.entries(photoMap)) {
-    const normKey = normalize(key.replace(/\.[^.]+$/, ""));
-    if (normKey === name) return dataURL;
-  }
-
-  // All words match
-  const words = name.split(" ").filter(w => w.length > 1);
-  for (const [key, dataURL] of Object.entries(photoMap)) {
-    const normKey = normalize(key.replace(/\.[^.]+$/, ""));
-    if (words.every(w => normKey.includes(w))) return dataURL;
-  }
-
-  // First + last name
-  const parts = name.split(" ");
-  const first = parts[0];
-  const last = parts[parts.length - 1];
-  for (const [key, dataURL] of Object.entries(photoMap)) {
-    const normKey = normalize(key.replace(/\.[^.]+$/, ""));
-    if (normKey.includes(first) && (last === first || normKey.includes(last))) return dataURL;
-  }
-
-  return null;
-}
-
 // ── Student list ──────────────────────────────────────────────────────
 function updateStudentList() {
   if (!mappedData.length) return;
   const wrap = document.getElementById("studentListWrap");
   const list = document.getElementById("studentList");
   wrap.style.display = "block";
-  const useOrderMatch = photoOrderList.length > 0;
-  list.innerHTML = mappedData.map((s,i) => {
-    const photo = useOrderMatch ? getPhotoByIndex(i) : findPhoto(s);
-    const label = useOrderMatch
-      ? (photo ? `📷 #${i+1} ✓` : "⚠ no photo")
-      : (photo ? "📷 name ✓"  : "⚠ no photo");
+  list.innerHTML = mappedData.map((s, i) => {
+    const photo = findPhoto(s);
+    const label = photo ? `📷 row ${s._excelRow} ✓` : `⚠ row ${s._excelRow} no photo`;
     return `<div class="student-row">
       <span class="snum">${i+1}</span>
       <span class="sname">${s.name || "(no name)"}</span>
@@ -676,12 +659,21 @@ async function generateAll() {
     const s = mappedData[i];
     document.getElementById("progressBar").style.width = Math.round((i/total)*100) + "%";
     document.getElementById("progressLabel").textContent = `Generating ${i+1} of ${total}: ${s.name || "student"}`;
-    const photoURL = (photoOrderList.length > 0) ? getPhotoByIndex(i) : findPhoto(s);
+    const photoURL = findPhoto(s);
     const photoImg = await loadImage(photoURL);
     const fc = makeCanvas(); drawFront(fc.getContext("2d"), s, photoImg, positions.front);
     const bc = makeCanvas(); drawBack(bc.getContext("2d"), s, positions.back);
     const safeName = (s.name || `student_${i+1}`).replace(/\s+/g, "_");
-    renderedCards.push({ name: s.name || `student_${i+1}`, safeName, frontDataURL: fc.toDataURL("image/png"), backDataURL: bc.toDataURL("image/png") });
+    // Store student data + photoURL so individual editor can re-render
+    renderedCards.push({
+      name: s.name || `student_${i+1}`,
+      safeName,
+      studentData: JSON.parse(JSON.stringify(s)),
+      photoURL: photoURL || null,
+      frontDataURL: fc.toDataURL("image/png"),
+      backDataURL:  bc.toDataURL("image/png"),
+      customPositions: null, // null = use global positions
+    });
     await sleep(10);
   }
   document.getElementById("progressBar").style.width = "100%";
@@ -815,6 +807,174 @@ function showPreview() {
   document.getElementById("nextBtn").disabled = previewIndex === renderedCards.length-1;
   drawOnCanvas("prevFront", card.frontDataURL);
   drawOnCanvas("prevBack",  card.backDataURL);
+  // Close individual editor if open from a different card
+  const editPanel = document.getElementById("individualEditPanel");
+  if (editPanel && editPanel.dataset.cardIndex != previewIndex) {
+    editPanel.style.display = "none";
+  }
+}
+
+// ─── Individual card editor ───────────────────────────────────────────
+// Each card stores customPositions (null = use global). When the user
+// opens the editor for a card, sliders are seeded from that card's
+// effective positions. Changes only re-render that one card.
+
+let individualEditIndex = -1; // which card is being edited
+
+function openIndividualEditor(cardIndex) {
+  individualEditIndex = cardIndex;
+  const card = renderedCards[cardIndex];
+  const panel = document.getElementById("individualEditPanel");
+  panel.style.display = "block";
+  panel.dataset.cardIndex = cardIndex;
+  document.getElementById("individualEditTitle").textContent =
+    `✏️ Editing: ${card.name}`;
+  // Seed from this card's effective positions
+  const eff = card.customPositions || positions;
+  buildIndividualSliders(eff, card);
+  // Scroll panel into view
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeIndividualEditor() {
+  document.getElementById("individualEditPanel").style.display = "none";
+  individualEditIndex = -1;
+}
+
+function buildIndividualSliders(eff, card) {
+  const el = document.getElementById("individualSliders");
+  // Seed from this card's custom photo settings, or fall back to global
+  const ps = card.customPhotoSettings || JSON.parse(JSON.stringify(photoSettings));
+  el.innerHTML = `
+    <div class="field-group">
+      <div class="field-group-label">Photo</div>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+        <label style="cursor:pointer; background:#eef9fd; border:2px dashed #5BC4E5; border-radius:10px; padding:8px 14px; font-size:13px; font-weight:700; color:#5BC4E5;">
+          📷 Swap photo
+          <input type="file" accept="image/*" style="display:none" onchange="swapIndividualPhoto(this)">
+        </label>
+        <span id="individualPhotoStatus" style="font-size:12px; color:#888;">${card.photoURL ? "✅ has photo" : "⚠ no photo"}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">X position</span>
+        <input class="slider-input" type="range" min="0" max="400" value="${ps.x}"
+          oninput="updateIndividualPhoto('x',+this.value); document.getElementById('ip_x').textContent=this.value">
+        <span class="slider-val" id="ip_x">${ps.x}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Y position</span>
+        <input class="slider-input" type="range" min="0" max="650" value="${ps.y}"
+          oninput="updateIndividualPhoto('y',+this.value); document.getElementById('ip_y').textContent=this.value">
+        <span class="slider-val" id="ip_y">${ps.y}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Width</span>
+        <input class="slider-input" type="range" min="50" max="350" value="${ps.w}"
+          oninput="updateIndividualPhoto('w',+this.value); document.getElementById('ip_w').textContent=this.value">
+        <span class="slider-val" id="ip_w">${ps.w}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Height</span>
+        <input class="slider-input" type="range" min="50" max="350" value="${ps.h}"
+          oninput="updateIndividualPhoto('h',+this.value); document.getElementById('ip_h').textContent=this.value">
+        <span class="slider-val" id="ip_h">${ps.h}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Tilt (degrees)</span>
+        <input class="slider-input" type="range" min="-30" max="30" value="${ps.tilt}"
+          oninput="updateIndividualPhoto('tilt',+this.value); document.getElementById('ip_t').textContent=this.value">
+        <span class="slider-val" id="ip_t">${ps.tilt}</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-name">Scale %</span>
+        <input class="slider-input" type="range" min="50" max="200" value="${ps.scale}"
+          oninput="updateIndividualPhoto('scale',+this.value); document.getElementById('ip_s').textContent=this.value">
+        <span class="slider-val" id="ip_s">${ps.scale}</span>
+      </div>
+    </div>`;
+}
+
+function updateIndividualPhoto(prop, val) {
+  if (individualEditIndex < 0) return;
+  const card = renderedCards[individualEditIndex];
+  // Copy global photoSettings if this card has no custom settings yet
+  if (!card.customPhotoSettings) {
+    card.customPhotoSettings = JSON.parse(JSON.stringify(photoSettings));
+  }
+  card.customPhotoSettings[prop] = val;
+  rerenderIndividualCard();
+}
+
+// Get or create a deep copy of positions for this card
+function ensureCustomPositions(card) {
+  if (!card.customPositions) {
+    card.customPositions = {
+      front: JSON.parse(JSON.stringify(positions.front)),
+      back:  JSON.parse(JSON.stringify(positions.back)),
+    };
+  }
+  return card.customPositions;
+}
+
+// Map prefix → side key
+function prefixToSide(prefix) {
+  return prefix === "indFront" ? "front" : "back";
+}
+
+function updateIndividualPos(prefix, i, prop, val) {
+  const card = renderedCards[individualEditIndex];
+  const cp = ensureCustomPositions(card);
+  cp[prefixToSide(prefix)][i][prop] = val;
+}
+
+function swapIndividualPhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    removeBgInBrowser(e.target.result).then(cleanURL => {
+      renderedCards[individualEditIndex].photoURL = cleanURL;
+      document.getElementById("individualPhotoStatus").textContent = "✅ photo updated";
+      rerenderIndividualCard();
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+async function rerenderIndividualCard() {
+  if (individualEditIndex < 0) return;
+  const card = renderedCards[individualEditIndex];
+  await document.fonts.ready;
+  const photoImg = await loadImage(card.photoURL);
+  // Use this card's custom photo settings if set, otherwise global
+  const savedPhotoSettings = photoSettings;
+  if (card.customPhotoSettings) {
+    // Temporarily override global photoSettings for drawFront
+    Object.assign(photoSettings, card.customPhotoSettings);
+  }
+  const fc = makeCanvas();
+  drawFront(fc.getContext("2d"), card.studentData, photoImg, positions.front);
+  card.frontDataURL = fc.toDataURL("image/png");
+  // Restore global photoSettings
+  if (card.customPhotoSettings) {
+    Object.assign(photoSettings, savedPhotoSettings);
+  }
+  const bc = makeCanvas();
+  drawBack(bc.getContext("2d"), card.studentData, positions.back);
+  card.backDataURL = bc.toDataURL("image/png");
+  if (previewIndex === individualEditIndex) {
+    drawOnCanvas("prevFront", card.frontDataURL);
+    drawOnCanvas("prevBack",  card.backDataURL);
+  }
+}
+
+function resetIndividualCard() {
+  if (individualEditIndex < 0) return;
+  if (!confirm("Reset this card's photo to global settings?")) return;
+  const card = renderedCards[individualEditIndex];
+  card.customPhotoSettings = null;
+  buildIndividualSliders(null, card);
+  rerenderIndividualCard();
 }
 function previewNav(dir) {
   previewIndex = Math.max(0, Math.min(renderedCards.length-1, previewIndex+dir));
